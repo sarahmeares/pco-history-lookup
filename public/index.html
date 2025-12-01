@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PCO Member History Lookup - Updated</title>
+    <title>PCO Member History Lookup</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
@@ -30,6 +30,7 @@
         .badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: 600; margin-left: 10px; }
         .badge-active { background: #c6f6d5; color: #22543d; }
         .badge-past { background: #fed7d7; color: #742a2a; }
+        .badge-scheduled { background: #feebc8; color: #744210; }
         .loading { text-align: center; padding: 40px; color: #667eea; font-size: 1.1em; }
         .error { background: #fed7d7; color: #742a2a; padding: 15px; border-radius: 8px; margin: 20px 0; }
         .credentials-note { background: #bee3f8; border-left: 4px solid #3182ce; padding: 15px; margin: 20px 0; border-radius: 4px; font-size: 0.9em; color: #2c5282; }
@@ -155,57 +156,31 @@
                         <div class="section-title">📋 PCO SERVICES</div>
                         <div class="info-row"><div class="info-label">Add Date:</div><div class="info-value">${formatDate(servicesData.data.attributes.created_at)}</div></div>
                         <div class="info-row"><div class="info-label">Removal Date:</div><div class="info-value">${servicesData.data.attributes.archived_at ? formatDate(servicesData.data.attributes.archived_at) : 'Still Active'}</div></div>
-                        <h3 style="margin-top: 20px; color: #4a5568;">Team Membership History</h3>
                     `;
                     
-                    updateProgress('Fetching all teams...');
-                    const allTeams = await fetchAllPages(`https://api.planningcenteronline.com/services/v2/teams`);
-                    const archivedTeams = await fetchAllPages(`https://api.planningcenteronline.com/services/v2/teams?filter=archived`);
-                    const allTeamsCombined = [...allTeams, ...archivedTeams];
+                    updateProgress('Getting current team assignments...');
+                    const currentTeams = await fetchAllPages(`https://api.planningcenteronline.com/services/v2/people/${personId}/teams`);
                     
-                    updateProgress(`Checking ${allTeamsCombined.length} teams...`);
-                    const teamMemberships = [];
-                    
-                    for (let i = 0; i < allTeamsCombined.length; i++) {
-                        if (i % 10 === 0) updateProgress(`Checking team ${i+1}/${allTeamsCombined.length}...`);
-                        
-                        const team = allTeamsCombined[i];
-                        try {
-                            const personOnTeam = await fetchWithProxy(`https://api.planningcenteronline.com/services/v2/teams/${team.id}/people/${personId}`);
-                            
-                            if (personOnTeam && personOnTeam.data) {
-                                let serviceTypeName = 'Unknown';
-                                const serviceTypeId = team.relationships?.service_type?.data?.id;
-                                if (serviceTypeId) {
-                                    try {
-                                        const stData = await fetchWithProxy(`https://api.planningcenteronline.com/services/v2/service_types/${serviceTypeId}`);
-                                        serviceTypeName = stData.data.attributes.name;
-                                    } catch (e) {}
-                                }
-                                
-                                teamMemberships.push({
-                                    teamId: team.id,
-                                    teamName: team.attributes.name,
-                                    serviceType: serviceTypeName,
-                                    addedDate: personOnTeam.data.attributes.created_at,
-                                    updatedDate: personOnTeam.data.attributes.updated_at,
-                                    teamArchived: team.attributes.archived_at,
-                                    isCurrentTeam: !team.attributes.archived_at
-                                });
-                            }
-                        } catch (e) {}
-                    }
-                    
-                    updateProgress('Fetching scheduling data...');
+                    updateProgress('Fetching scheduling history...');
                     const planPeople = await fetchAllPages(`https://api.planningcenteronline.com/services/v2/people/${personId}/plan_people`);
                     
                     const schedulingByTeam = {};
+                    const teamIds = new Set();
+                    
                     for (const assignment of planPeople) {
                         const teamId = assignment.relationships?.team?.data?.id;
                         if (!teamId) continue;
+                        teamIds.add(teamId);
                         
                         if (!schedulingByTeam[teamId]) {
-                            schedulingByTeam[teamId] = { positions: new Set(), count: 0, firstScheduled: null, lastScheduled: null };
+                            schedulingByTeam[teamId] = { 
+                                teamName: 'Loading...', 
+                                serviceType: 'Loading...',
+                                positions: new Set(), 
+                                count: 0, 
+                                firstScheduled: null, 
+                                lastScheduled: null 
+                            };
                         }
                         
                         const position = assignment.attributes.team_position_name || assignment.attributes.status || 'Scheduled';
@@ -223,58 +198,100 @@
                         }
                     }
                     
-                    if (teamMemberships.length > 0) {
-                        const currentTeams = teamMemberships.filter(t => t.isCurrentTeam);
-                        const pastTeams = teamMemberships.filter(t => !t.isCurrentTeam);
+                    if (teamIds.size > 0) {
+                        updateProgress('Fetching team details...');
+                        for (const teamId of teamIds) {
+                            try {
+                                const teamData = await fetchWithProxy(`https://api.planningcenteronline.com/services/v2/teams/${teamId}`);
+                                if (schedulingByTeam[teamId]) {
+                                    schedulingByTeam[teamId].teamName = teamData.data.attributes.name;
+                                    
+                                    const serviceTypeId = teamData.data.relationships?.service_type?.data?.id;
+                                    if (serviceTypeId) {
+                                        const stData = await fetchWithProxy(`https://api.planningcenteronline.com/services/v2/service_types/${serviceTypeId}`);
+                                        schedulingByTeam[teamId].serviceType = stData.data.attributes.name;
+                                    }
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                    
+                    if (currentTeams.length > 0) {
+                        html += '<h3 style="margin-top: 20px; color: #4a5568;">Current Teams</h3>';
                         
-                        if (currentTeams.length > 0) {
-                            html += '<h4 style="margin-top: 15px; color: #4a5568;">Current Teams</h4>';
-                            for (const team of currentTeams) {
+                        for (const team of currentTeams) {
+                            const teamId = team.id;
+                            const teamName = team.attributes.name;
+                            
+                            let serviceTypeName = 'Unknown';
+                            const serviceTypeId = team.relationships?.service_type?.data?.id;
+                            if (serviceTypeId) {
+                                try {
+                                    const stData = await fetchWithProxy(`https://api.planningcenteronline.com/services/v2/service_types/${serviceTypeId}`);
+                                    serviceTypeName = stData.data.attributes.name;
+                                } catch (e) {}
+                            }
+                            
+                            let addedToTeamDate = 'Unknown';
+                            try {
+                                const personOnTeam = await fetchWithProxy(`https://api.planningcenteronline.com/services/v2/teams/${teamId}/people/${personId}`);
+                                if (personOnTeam && personOnTeam.data) {
+                                    addedToTeamDate = formatDate(personOnTeam.data.attributes.created_at);
+                                }
+                            } catch (e) {}
+                            
+                            html += `
+                                <div class="team-item">
+                                    <div class="team-name">${teamName} <span class="badge badge-active">On Team</span></div>
+                                    <div class="detail-row"><strong>Service Type:</strong> ${serviceTypeName}</div>
+                                    <div class="detail-row"><strong>Added to Team:</strong> ${addedToTeamDate}</div>
+                            `;
+                            
+                            if (schedulingByTeam[teamId]) {
+                                const sched = schedulingByTeam[teamId];
+                                html += `
+                                    <div class="detail-row"><strong>Positions Served:</strong> ${Array.from(sched.positions).join(', ')}</div>
+                                    <div class="detail-row"><strong>Times Scheduled:</strong> ${sched.count}</div>
+                                    <div class="detail-row"><strong>Last Scheduled:</strong> ${formatDate(sched.lastScheduled)}</div>
+                                `;
+                            }
+                            
+                            html += '</div>';
+                        }
+                    }
+                    
+                    html += '<h3 style="margin-top: 20px; color: #4a5568;">Scheduling History</h3>';
+                    
+                    if (Object.keys(schedulingByTeam).length > 0) {
+                        const currentTeamIds = new Set(currentTeams.map(t => t.id));
+                        const sortedTeams = Object.entries(schedulingByTeam).sort((a, b) => {
+                            return (b[1].lastScheduled || '').localeCompare(a[1].lastScheduled || '');
+                        });
+                        
+                        let hasSchedulingOnlyTeams = false;
+                        for (const [teamId, info] of sortedTeams) {
+                            const isCurrentTeam = currentTeamIds.has(teamId);
+                            
+                            if (!isCurrentTeam) {
+                                hasSchedulingOnlyTeams = true;
                                 html += `
                                     <div class="team-item">
-                                        <div class="team-name">${team.teamName} <span class="badge badge-active">Active</span></div>
-                                        <div class="detail-row"><strong>Service Type:</strong> ${team.serviceType}</div>
-                                        <div class="detail-row"><strong>Added to Team:</strong> ${formatDate(team.addedDate)}</div>
-                                        <div class="detail-row"><strong>Last Updated:</strong> ${formatDate(team.updatedDate)}</div>
+                                        <div class="team-name">${info.teamName} <span class="badge badge-scheduled">Scheduled Only</span></div>
+                                        <div class="detail-row"><strong>Service Type:</strong> ${info.serviceType}</div>
+                                        <div class="detail-row"><strong>Positions Served:</strong> ${Array.from(info.positions).join(', ')}</div>
+                                        <div class="detail-row"><strong>Times Scheduled:</strong> ${info.count}</div>
+                                        <div class="detail-row"><strong>First Scheduled:</strong> ${formatDate(info.firstScheduled)}</div>
+                                        <div class="detail-row"><strong>Last Scheduled:</strong> ${formatDate(info.lastScheduled)}</div>
+                                    </div>
                                 `;
-                                
-                                if (schedulingByTeam[team.teamId]) {
-                                    const sched = schedulingByTeam[team.teamId];
-                                    html += `
-                                        <div class="detail-row"><strong>Positions Served:</strong> ${Array.from(sched.positions).join(', ')}</div>
-                                        <div class="detail-row"><strong>Times Scheduled:</strong> ${sched.count}</div>
-                                        <div class="detail-row"><strong>Last Scheduled:</strong> ${formatDate(sched.lastScheduled)}</div>
-                                    `;
-                                }
-                                html += '</div>';
                             }
                         }
                         
-                        if (pastTeams.length > 0) {
-                            html += '<h4 style="margin-top: 15px; color: #4a5568;">Past Teams</h4>';
-                            for (const team of pastTeams) {
-                                html += `
-                                    <div class="team-item">
-                                        <div class="team-name">${team.teamName} <span class="badge badge-past">Past</span></div>
-                                        <div class="detail-row"><strong>Service Type:</strong> ${team.serviceType}</div>
-                                        <div class="detail-row"><strong>Added to Team:</strong> ${formatDate(team.addedDate)}</div>
-                                        <div class="detail-row"><strong>Team Archived:</strong> ${formatDate(team.teamArchived)}</div>
-                                        <div class="detail-row"><strong>Last Updated:</strong> ${formatDate(team.updatedDate)}</div>
-                                `;
-                                
-                                if (schedulingByTeam[team.teamId]) {
-                                    const sched = schedulingByTeam[team.teamId];
-                                    html += `
-                                        <div class="detail-row"><strong>Positions Served:</strong> ${Array.from(sched.positions).join(', ')}</div>
-                                        <div class="detail-row"><strong>Times Scheduled:</strong> ${sched.count}</div>
-                                        <div class="detail-row"><strong>Last Scheduled:</strong> ${formatDate(sched.lastScheduled)}</div>
-                                    `;
-                                }
-                                html += '</div>';
-                            }
+                        if (!hasSchedulingOnlyTeams) {
+                            html += '<p style="color: #718096; margin-top: 10px;">All scheduling is on current teams (shown above)</p>';
                         }
                     } else {
-                        html += '<p style="color: #718096; margin-top: 10px;">No team memberships found</p>';
+                        html += '<p style="color: #718096; margin-top: 10px;">No scheduling history found</p>';
                     }
                     
                 } catch (e) {
