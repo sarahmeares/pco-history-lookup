@@ -16,30 +16,25 @@ router.post('/lookup-person', async (req, res) => {
             createdAt: personData.data.attributes.created_at
         };
 
+        // Calculate date 9 months ago for filtering
+        const nineMonthsAgo = new Date();
+        nineMonthsAgo.setMonth(nineMonthsAgo.getMonth() - 9);
+        const filterDate = nineMonthsAgo.toISOString().split('T')[0];
+
         // --- SERVICES ---
         let services = null;
         try {
-            // Calculate date 9 months ago
-            const nineMonthsAgo = new Date();
-            nineMonthsAgo.setMonth(nineMonthsAgo.getMonth() - 9);
-            const filterDate = nineMonthsAgo.toISOString().split('T')[0]; // Format: YYYY-MM-DD
-
             console.log(`Fetching Services data for person ${personId} since ${filterDate}`);
 
-            // Get current teams
             const currentTeams = await fetchAllPages(`https://api.planningcenteronline.com/services/v2/people/${personId}/teams`);
-            
-            // Get plan_people (scheduling history) from past 9 months
             const planPeopleUrl = `https://api.planningcenteronline.com/services/v2/people/${personId}/plan_people?filter=after&filter=${filterDate}&order=-sort_date`;
             const planPeople = await fetchAllPages(planPeopleUrl);
 
             console.log(`Found ${currentTeams.length} current teams and ${planPeople.length} plan assignments since ${filterDate}`);
 
-            // Map scheduling by team
             const schedulingByTeam = {};
             const teamIds = new Set();
 
-            // Process all scheduling assignments
             for (const assignment of planPeople) {
                 const teamId = assignment.relationships?.team?.data?.id;
                 if (!teamId) continue;
@@ -69,7 +64,6 @@ router.post('/lookup-person', async (req, res) => {
                         schedulingByTeam[teamId].lastScheduled = sortDate;
                     }
                     
-                    // Store recent plan details
                     schedulingByTeam[teamId].recentPlans.push({
                         date: sortDate,
                         position: position,
@@ -78,7 +72,6 @@ router.post('/lookup-person', async (req, res) => {
                 }
             }
 
-            // Add team IDs from current teams (in case they haven't been scheduled recently)
             for (const team of currentTeams) {
                 teamIds.add(team.id);
                 if (!schedulingByTeam[team.id]) {
@@ -92,7 +85,6 @@ router.post('/lookup-person', async (req, res) => {
                 }
             }
 
-            // Fetch team names and service types
             for (const teamId of teamIds) {
                 try {
                     const teamData = await fetchFromPCO(`https://api.planningcenteronline.com/services/v2/teams/${teamId}`);
@@ -108,10 +100,8 @@ router.post('/lookup-person', async (req, res) => {
                 }
             }
 
-            // Sort recent plans by date (most recent first)
             for (const teamId in schedulingByTeam) {
                 schedulingByTeam[teamId].recentPlans.sort((a, b) => new Date(b.date) - new Date(a.date));
-                // Keep only the 5 most recent
                 schedulingByTeam[teamId].recentPlans = schedulingByTeam[teamId].recentPlans.slice(0, 5);
             }
 
@@ -127,6 +117,126 @@ router.post('/lookup-person', async (req, res) => {
         } catch (err) {
             console.error('Error fetching Services data:', err);
             services = { error: err.message };
+        }
+
+        // --- CHECK-INS ---
+        let checkIns = null;
+        try {
+            console.log(`Fetching Check-Ins data for person ${personId} since ${filterDate}`);
+            
+            // Get all check-ins for this person in the past 9 months
+            const checkInsUrl = `https://api.planningcenteronline.com/check-ins/v2/people/${personId}/check_ins?where[created_at][gte]=${filterDate}&order=-created_at`;
+            const allCheckIns = await fetchAllPages(checkInsUrl);
+            
+            console.log(`Found ${allCheckIns.length} check-ins since ${filterDate}`);
+
+            // Group by event
+            const checkInsByEvent = {};
+            const eventIds = new Set();
+            
+            for (const checkIn of allCheckIns) {
+                const eventId = checkIn.relationships?.event?.data?.id;
+                if (!eventId) continue;
+                
+                eventIds.add(eventId);
+                
+                if (!checkInsByEvent[eventId]) {
+                    checkInsByEvent[eventId] = {
+                        count: 0,
+                        firstCheckIn: null,
+                        lastCheckIn: null,
+                        recentCheckIns: []
+                    };
+                }
+                
+                checkInsByEvent[eventId].count++;
+                const checkInDate = checkIn.attributes.created_at;
+                
+                if (checkInDate) {
+                    if (!checkInsByEvent[eventId].firstCheckIn || checkInDate < checkInsByEvent[eventId].firstCheckIn) {
+                        checkInsByEvent[eventId].firstCheckIn = checkInDate;
+                    }
+                    if (!checkInsByEvent[eventId].lastCheckIn || checkInDate > checkInsByEvent[eventId].lastCheckIn) {
+                        checkInsByEvent[eventId].lastCheckIn = checkInDate;
+                    }
+                    
+                    checkInsByEvent[eventId].recentCheckIns.push({
+                        date: checkInDate,
+                        kind: checkIn.attributes.kind
+                    });
+                }
+            }
+            
+            // Fetch event names
+            for (const eventId of eventIds) {
+                try {
+                    const eventData = await fetchFromPCO(`https://api.planningcenteronline.com/check-ins/v2/events/${eventId}`);
+                    checkInsByEvent[eventId].eventName = eventData.data.attributes.name;
+                } catch (err) {
+                    console.error(`Error fetching event ${eventId}:`, err.message);
+                    checkInsByEvent[eventId].eventName = 'Unknown Event';
+                }
+            }
+            
+            // Sort recent check-ins
+            for (const eventId in checkInsByEvent) {
+                checkInsByEvent[eventId].recentCheckIns.sort((a, b) => new Date(b.date) - new Date(a.date));
+                checkInsByEvent[eventId].recentCheckIns = checkInsByEvent[eventId].recentCheckIns.slice(0, 5);
+            }
+            
+            checkIns = {
+                totalCheckIns: allCheckIns.length,
+                checkInsByEvent,
+                dateRange: {
+                    from: filterDate,
+                    to: new Date().toISOString().split('T')[0]
+                }
+            };
+            
+        } catch (err) {
+            console.error('Error fetching Check-Ins data:', err);
+            checkIns = { error: err.message };
+        }
+
+        // --- REGISTRATIONS ---
+        let registrations = null;
+        try {
+            console.log(`Fetching Registrations data for person ${personId} since ${filterDate}`);
+            
+            // Get all registrations for this person in the past 9 months
+            const registrationsUrl = `https://api.planningcenteronline.com/calendar/v2/people/${personId}/event_instances?filter=future,past&where[starts_at][gte]=${filterDate}&order=-starts_at`;
+            const allRegistrations = await fetchAllPages(registrationsUrl);
+            
+            console.log(`Found ${allRegistrations.length} registrations since ${filterDate}`);
+
+            const registrationList = [];
+            
+            for (const reg of allRegistrations) {
+                const eventData = {
+                    eventName: reg.attributes.name || 'Unknown Event',
+                    startsAt: reg.attributes.starts_at,
+                    endsAt: reg.attributes.ends_at,
+                    allDayEvent: reg.attributes.all_day_event
+                };
+                
+                registrationList.push(eventData);
+            }
+            
+            // Sort by date (most recent first)
+            registrationList.sort((a, b) => new Date(b.startsAt) - new Date(a.startsAt));
+            
+            registrations = {
+                totalRegistrations: allRegistrations.length,
+                registrationList: registrationList.slice(0, 20), // Keep top 20
+                dateRange: {
+                    from: filterDate,
+                    to: new Date().toISOString().split('T')[0]
+                }
+            };
+            
+        } catch (err) {
+            console.error('Error fetching Registrations data:', err);
+            registrations = { error: err.message };
         }
 
         // --- GROUPS ---
@@ -164,7 +274,7 @@ router.post('/lookup-person', async (req, res) => {
             groups = { error: err.message };
         }
 
-        res.json({ person, services, groups });
+        res.json({ person, services, checkIns, registrations, groups });
 
     } catch (error) {
         console.error('Top-level error:', error);
