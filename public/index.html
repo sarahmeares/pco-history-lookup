@@ -161,9 +161,16 @@
                     updateProgress('Getting current team assignments...');
                     const currentTeams = await fetchAllPages(`https://api.planningcenteronline.com/services/v2/people/${personId}/teams`);
                     
-                    updateProgress('Fetching scheduling history...');
-                    const planPeople = await fetchAllPages(`https://api.planningcenteronline.com/services/v2/people/${personId}/plan_people`);
+                    // Calculate date 6 months ago for scheduling filter
+                    const sixMonthsAgo = new Date();
+                    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+                    const sixMonthsAgoISO = sixMonthsAgo.toISOString();
                     
+                    // Get scheduling history (last 6 months only)
+                    updateProgress('Fetching scheduling history (last 6 months)...');
+                    const planPeople = await fetchAllPages(`https://api.planningcenteronline.com/services/v2/people/${personId}/plan_people?filter=after&after=${sixMonthsAgoISO}`);
+                    
+                    // Build scheduling summary
                     const schedulingByTeam = {};
                     const teamIds = new Set();
                     
@@ -260,7 +267,7 @@
                         }
                     }
                     
-                    html += '<h3 style="margin-top: 20px; color: #4a5568;">Scheduling History</h3>';
+                    html += '<h3 style="margin-top: 20px; color: #4a5568;">Scheduling History (Last 6 Months)</h3>';
                     
                     if (Object.keys(schedulingByTeam).length > 0) {
                         const currentTeamIds = new Set(currentTeams.map(t => t.id));
@@ -291,7 +298,7 @@
                             html += '<p style="color: #718096; margin-top: 10px;">All scheduling is on current teams (shown above)</p>';
                         }
                     } else {
-                        html += '<p style="color: #718096; margin-top: 10px;">No scheduling history found</p>';
+                        html += '<p style="color: #718096; margin-top: 10px;">No scheduling history found in last 6 months</p>';
                     }
                     
                 } catch (e) {
