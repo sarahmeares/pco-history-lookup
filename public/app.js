@@ -25,7 +25,7 @@ async function lookupPerson() {
     if(!personId){ alert('Please enter Person ID'); return; }
     
     document.getElementById('lookupBtn').disabled = true;
-    showLoading('Fetching data...');
+    showLoading('Fetching data from all PCO products...');
     hideError();
     document.getElementById('results').innerHTML = '';
     
@@ -70,7 +70,6 @@ async function lookupPerson() {
                              Times Scheduled (9mo): ${sched.count || 0}<br>
                              Last Scheduled: ${sched.lastScheduled ? new Date(sched.lastScheduled).toLocaleDateString() : 'Not scheduled in past 9 months'}`;
                     
-                    // Show recent plans
                     if (sched.recentPlans && sched.recentPlans.length > 0) {
                         html += '<br><strong>Recent Schedule:</strong><ul>';
                         for (const plan of sched.recentPlans) {
@@ -85,7 +84,6 @@ async function lookupPerson() {
                 html += '<p>No current teams</p>';
             }
             
-            // Show teams they were scheduled on but not currently on
             const currentTeamIds = new Set(currentTeams.map(t => t.id));
             const pastTeamIds = Object.keys(schedulingByTeam).filter(id => !currentTeamIds.has(id));
             
@@ -102,6 +100,73 @@ async function lookupPerson() {
             }
         } else if (data.services?.error) {
             html += `<div class="section-title">📋 Services</div><p class="error-text">Error loading services data: ${data.services.error}</p>`;
+        }
+
+        // CHECK-INS
+        if(data.checkIns && !data.checkIns.error){
+            html += `<div class="section-title">✅ Check-Ins (Past 9 Months)</div>`;
+            
+            if (data.checkIns.dateRange) {
+                html += `<div class="info-row"><em>Data from ${new Date(data.checkIns.dateRange.from).toLocaleDateString()} to ${new Date(data.checkIns.dateRange.to).toLocaleDateString()}</em></div>`;
+            }
+            
+            html += `<div class="info-row"><strong>Total Check-Ins:</strong> ${data.checkIns.totalCheckIns}</div>`;
+            
+            const { checkInsByEvent } = data.checkIns;
+            
+            if(Object.keys(checkInsByEvent).length > 0){
+                html += '<h4>Check-Ins by Event:</h4>';
+                
+                for(const eventId in checkInsByEvent){
+                    const event = checkInsByEvent[eventId];
+                    html += `<div class="checkin-item">
+                             <strong>${event.eventName}</strong><br>
+                             Total Check-Ins: ${event.count}<br>
+                             First Check-In: ${event.firstCheckIn ? new Date(event.firstCheckIn).toLocaleDateString() : 'N/A'}<br>
+                             Last Check-In: ${event.lastCheckIn ? new Date(event.lastCheckIn).toLocaleDateString() : 'N/A'}`;
+                    
+                    if (event.recentCheckIns && event.recentCheckIns.length > 0) {
+                        html += '<br><strong>Recent Check-Ins:</strong><ul>';
+                        for (const checkIn of event.recentCheckIns) {
+                            html += `<li>${new Date(checkIn.date).toLocaleDateString()}</li>`;
+                        }
+                        html += '</ul>';
+                    }
+                    
+                    html += '</div>';
+                }
+            } else {
+                html += '<p>No check-ins found in past 9 months</p>';
+            }
+        } else if (data.checkIns?.error) {
+            html += `<div class="section-title">✅ Check-Ins</div><p class="error-text">Error loading check-ins data: ${data.checkIns.error}</p>`;
+        }
+
+        // REGISTRATIONS
+        if(data.registrations && !data.registrations.error){
+            html += `<div class="section-title">📝 Event Registrations (Past 9 Months)</div>`;
+            
+            if (data.registrations.dateRange) {
+                html += `<div class="info-row"><em>Data from ${new Date(data.registrations.dateRange.from).toLocaleDateString()} to ${new Date(data.registrations.dateRange.to).toLocaleDateString()}</em></div>`;
+            }
+            
+            html += `<div class="info-row"><strong>Total Registrations:</strong> ${data.registrations.totalRegistrations}</div>`;
+            
+            if(data.registrations.registrationList?.length > 0){
+                html += '<h4>Recent Registrations:</h4>';
+                
+                for(const reg of data.registrations.registrationList){
+                    html += `<div class="registration-item">
+                             <strong>${reg.eventName}</strong><br>
+                             Date: ${new Date(reg.startsAt).toLocaleDateString()}
+                             ${reg.allDayEvent ? ' (All Day)' : ` at ${new Date(reg.startsAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`}
+                             </div>`;
+                }
+            } else {
+                html += '<p>No registrations found in past 9 months</p>';
+            }
+        } else if (data.registrations?.error) {
+            html += `<div class="section-title">📝 Registrations</div><p class="error-text">Error loading registrations data: ${data.registrations.error}</p>`;
         }
         
         // GROUPS
