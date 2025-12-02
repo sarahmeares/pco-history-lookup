@@ -18,14 +18,21 @@ async function fetchFromPCO(url) {
             'Content-Type': 'application/json'
         }
     });
-
     const data = await res.json();
-
-    if (!res.ok) {
-        throw new Error(data?.errors?.[0]?.detail || 'PCO API Error');
-    }
-
+    if (!res.ok) throw new Error(data?.errors?.[0]?.detail || 'PCO API Error');
     return data;
 }
 
-module.exports = { fetchFromPCO };
+// Fetch all pages (pagination)
+async function fetchAllPages(baseUrl) {
+    let allData = [];
+    let url = baseUrl + (baseUrl.includes('?') ? '&' : '?') + 'per_page=100';
+    while (url) {
+        const data = await fetchFromPCO(url);
+        allData = allData.concat(data.data || []);
+        url = data.links?.next || null;
+    }
+    return allData;
+}
+
+module.exports = { fetchFromPCO, fetchAllPages };
