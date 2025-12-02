@@ -3,10 +3,28 @@ body { font-family: sans-serif; background: #f4f4f9; padding: 20px; }
 .card { background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
 h1 { margin-bottom: 10px; }
 .subtitle { margin-bottom: 20px; color: #555; }
-input { padding: 10px; width: 100%; margin-bottom: 10px; }
-button { padding: 10px 20px; cursor: pointer; }
-.loading { color: #667eea; margin-top: 20px; }
+input { padding: 10px; width: 100%; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 5px; }
+button { padding: 10px 20px; cursor: pointer; background: #667eea; color: white; border: none; border-radius: 5px; }
+button:hover { background: #5568d3; }
+button:disabled { background: #ccc; cursor: not-allowed; }
+.loading { color: #667eea; margin-top: 20px; font-weight: bold; }
 .error { background: #fed7d7; color: #742a2a; padding: 10px; border-radius: 5px; margin-top: 10px; }
 .results { margin-top: 20px; }
-.section-title { font-size: 1.2em; margin-bottom: 10px; color: #2d3748; }
-.info-row { margin-bottom: 5px; }
+.section-title { font-size: 1.3em; margin: 20px 0 10px 0; color: #2d3748; font-weight: bold; border-bottom: 2px solid #667eea; padding-bottom: 5px; }
+.info-row { margin-bottom: 8px; padding: 5px 0; }
+.team-item, .group-item { 
+    background: #f7fafc; 
+    padding: 12px; 
+    margin: 10px 0; 
+    border-radius: 5px; 
+    border-left: 4px solid #667eea; 
+}
+.team-item.inactive, .group-item.inactive { 
+    background: #f9f9f9; 
+    border-left-color: #ccc; 
+    opacity: 0.8; 
+}
+h4 { margin: 15px 0 10px 0; color: #4a5568; }
+ul { margin: 5px 0; padding-left: 20px; }
+li { margin: 3px 0; }
+.error-text { color: #e53e3e; font-style: italic; }
