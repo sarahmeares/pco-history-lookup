@@ -12,7 +12,7 @@ button:disabled { background: #ccc; cursor: not-allowed; }
 .results { margin-top: 20px; }
 .section-title { font-size: 1.3em; margin: 20px 0 10px 0; color: #2d3748; font-weight: bold; border-bottom: 2px solid #667eea; padding-bottom: 5px; }
 .info-row { margin-bottom: 8px; padding: 5px 0; }
-.team-item, .group-item { 
+.team-item, .group-item, .checkin-item, .registration-item { 
     background: #f7fafc; 
     padding: 12px; 
     margin: 10px 0; 
@@ -23,6 +23,12 @@ button:disabled { background: #ccc; cursor: not-allowed; }
     background: #f9f9f9; 
     border-left-color: #ccc; 
     opacity: 0.8; 
+}
+.checkin-item {
+    border-left-color: #48bb78;
+}
+.registration-item {
+    border-left-color: #ed8936;
 }
 h4 { margin: 15px 0 10px 0; color: #4a5568; }
 ul { margin: 5px 0; padding-left: 20px; }
