@@ -5,7 +5,8 @@ const APP_ID = process.env.PCO_APP_ID;
 const SECRET = process.env.PCO_SECRET;
 
 if (!APP_ID || !SECRET) {
-    console.error('ERROR: PCO_APP_ID or PCO_SECRET not set in .env');
+    console.error('ERROR: PCO_APP_ID or PCO_SECRET environment variables are not set');
+    console.error('Available env vars:', Object.keys(process.env).filter(k => k.startsWith('PCO')));
     process.exit(1);
 }
 
