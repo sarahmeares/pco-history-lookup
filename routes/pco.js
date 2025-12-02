@@ -1,7 +1,7 @@
 // routes/pco.js
 const express = require('express');
 const router = express.Router();
-const { fetchFromPCO, fetchAllPages } = require('../services/pcoClient');
+const { fetchFromPCO, fetchAllPages } = require('./services/pcoClient');
 
 router.post('/lookup-person', async (req, res) => {
     try {
